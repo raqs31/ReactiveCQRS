@@ -1,0 +1,18 @@
+<configuration>
+
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{HH:mm:ss.SSS} %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- The framework logs every actor message at DEBUG; useful when learning, far too loud
+         for normal use. Raise io.reactivecqrs to DEBUG to watch the pipeline work. -->
+    <logger name="io.reactivecqrs" level="INFO"/>
+    <logger name="org.apache.pekko" level="WARN"/>
+
+    <root level="INFO">
+        <appender-ref ref="STDOUT"/>
+    </root>
+
+</configuration>

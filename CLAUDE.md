@@ -33,6 +33,7 @@ test surface.
 |--------|------|---------|
 | `api` | `api/` | Public domain API: `Aggregate`, `Event`, `Command`, results, ids. Depends only on Pekko. |
 | `core` | `core/` | All the machinery: actors, event store, event bus, projections, sagas, document store, uid generator. Depends on `api`. |
+| `examples` | `examples/` | Runnable bank-account example backing `docs/`. Not published (`publish / skip`). Depends on `api`, `core`. |
 | `testdomain` | `testdomain/` | Example shopping-cart domain + integration specs. Depends on `api`, `core`. |
 | `testutils` | `testutils/` | `CommonSpec`, actor-ask helpers for tests. |
 | `utils` | `utils/` | Present in tree; commented out / mostly unused in `build.sbt`. |
@@ -61,7 +62,7 @@ sbt "project core" "~compile"   # incremental
   exist for tests that don't need a DB.
 - Publishing: `publishMavenStyle`, target `https://nexus.neula.in/...`
   (overridable via `-DsnapshotsRepo=`). Version lives in `project/Common.scala`
-  (`version := "0.12.44"`) — bump it there, not per-module.
+  (currently `version := "0.12.46"`) — bump it there, not per-module.
 
 ---
 
@@ -147,7 +148,7 @@ AggregateRepositoryActor → EventsBusActor → subscribers (ProjectionActor, sa
   `aggregateRoot`/`version` in memory, then keeps them updated. `aggregateVersionLimit`
   defaults to 10 000 events per aggregate.
 - **`EventsBusActor`** — in-memory routing + ack tracking with a DB-backed
-  `event_bus` cursor; implements consumer back-pressure (`MAX_BUFFER_SIZE` 1000).
+  `event_bus` cursor; implements consumer back-pressure (`MAX_BUFFER_SIZE`, default 10 000).
 - **`ProjectionActor` / `SubscribableProjectionActor`** — apply events to read
   models; handle out-of-order delivery via delayed/merge buffers.
 - **`SagaActor`** — process managers; `CONTINUES`/`REVERTING`/`ERROR` phases.
