@@ -86,17 +86,18 @@ Ids are consumed from the pool in memory, so gaps after a restart are normal and
 
 ## Indices worth adding
 
-Two tables are created without indices they are queried by. Neither is added automatically; both
-are safe to add yourself:
+`sagas` is created with no primary key and no index, and is queried by `name` on every saga-actor
+start (`loadAllSagas`) and by `(name, saga_id)` on every update and delete. Neither index is
+created automatically; both are safe to add yourself:
 
 ```sql
--- The outbox is queried and joined by aggregate_id on every projection fetch.
-CREATE INDEX IF NOT EXISTS events_to_publish_aggregate_idx ON events_to_publish (aggregate_id);
-
--- loadAllSagas runs WHERE name = ? on every saga actor start; updates run WHERE name = ? AND saga_id = ?.
 CREATE UNIQUE INDEX IF NOT EXISTS sagas_name_id_idx ON sagas (name, saga_id);
 CREATE INDEX IF NOT EXISTS sagas_name_idx ON sagas (name);
 ```
+
+The outbox is already covered — `PostgresEventStoreSchemaInitializer.scala:99` creates
+`events_to_publish_aggregate_idx ON events_to_publish (aggregate_id, version)`. Older notes
+describing this index as missing are out of date.
 
 For document stores, declare indices when constructing the store rather than by hand, so they
 survive a rebuild — see

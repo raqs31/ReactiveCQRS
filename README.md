@@ -77,6 +77,15 @@ Schema creation is then automatic and idempotent — every `initSchema()` is `CR
 | [Operations](docs/operations.md) | Schema reference, indices, tuning, deployment caveats |
 | [Roadmap](docs/roadmap.md) | Known gaps and planned work |
 
+Background reading, for deciding whether this is the right tool and understanding why it works the
+way it does:
+
+| Document | What it covers |
+|---|---|
+| [Background](docs/background.md) | CQRS and Event Sourcing fundamentals, with a reading list, and how the standard vocabulary maps onto this library |
+| [Design rationale](docs/design-rationale.md) | Why the design is what it is — the stored-procedure lock, the absence of snapshots, undo via no-op events, duplication chains |
+| [Comparison](docs/comparison.md) | Honest positioning against Pekko/Akka Persistence, Axon, EventStoreDB and Marten, including when *not* to use this |
+
 `CLAUDE.md` in the repository root is a separate, internals-focused map aimed at contributors and
 automated tooling; it also carries a register of known performance and integrity hotspots.
 

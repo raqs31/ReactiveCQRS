@@ -251,10 +251,10 @@ starting points, not vetted designs.
 | 🟠 High | Throughput | `Await.result(…, 60s)` blocks the command bus when an id pool drains | `AggregateCommandBusActor.scala:315-348` |
 | 🟠 High | Throughput | `Await.result(…, 60s)` blocks the saga actor per new saga when its id pool drains | `SagaActor.scala:136-152` |
 | 🟠 High | Latency | Synchronous `eventStore.localTx` runs on the actor thread during persist | `AggregateRepositoryActor.scala:284-320` |
-| 🟠 High | SQL | **Missing index** on `events_to_publish(aggregate_id)` → outbox full-scans | `PostgresEventStoreSchemaInitializer.scala:83` |
+| ✅ Fixed | SQL | ~~Missing index on `events_to_publish(aggregate_id)`~~ — index now created | `PostgresEventStoreSchemaInitializer.scala:99` |
 | 🟠 High | SQL | **No PK/index** on `sagas` → `loadAllSagas` full-scans on every saga-actor start | `PostgresSagaSchemaInitializer.scala:12` |
 | 🟠 High | SQL | Version/instant reads fetch **all** events then filter + deserialize in app | `PostgresEventStoreState.scala:117-176` (TODO L161) |
-| 🟠 High | Integrity | `PermanentDeleteEvent` deletes `events` before the noop_events subquery → **noop_events never deleted** | `PostgresEventStoreState.scala:244-250` |
+| ✅ Fixed | Integrity | ~~`PermanentDeleteEvent` deletes `events` before the noop_events subquery~~ — order corrected | `PostgresEventStoreState.scala:319-322` |
 | 🟠 High | Memory | EventBus ACK-tracking HashMaps leak on dead/slow subscribers; never evicted | `EventsBusActor.scala:91-95` |
 | 🟡 Medium | CPU | `getDocuments` does `loaded.find` per key → O(m·n) | `PostgresDocumentStore.scala:423` |
 | 🟡 Medium | CPU | `.distinct` on `pendingPublish` List → O(n²) per publish | `AggregateRepositoryActor.scala:95,136` |
@@ -344,12 +344,10 @@ starting points, not vetted designs.
   `insertDocuments` overloads are `???` (unimplemented). Test-only.
 
 ### D. SQL / query performance
-- 🟠 **Missing index on `events_to_publish(aggregate_id)`** —
-  `PostgresEventStoreSchemaInitializer.scala:83` creates the table with **no secondary
-  index** (verified: the file's only `CREATE INDEX`es are on `events`/`aggregates`).
-  The outbox is queried/joined by `aggregate_id` on every projection fetch
-  (`PostgresEventStoreState` outbox reads) → full scans as it grows.
-  *Fix:* `CREATE INDEX IF NOT EXISTS events_to_publish_aggregate_idx ON events_to_publish (aggregate_id)`.
+- ✅ **FIXED — index on `events_to_publish` now exists.**
+  `PostgresEventStoreSchemaInitializer.scala:99` creates
+  `events_to_publish_aggregate_idx ON events_to_publish (aggregate_id, version)`.
+  Re-verified against the current tree; earlier revisions of this register listed it as missing.
 - 🟠 **No PK/index on `sagas`** — `PostgresSagaSchemaInitializer.scala:12` creates the
   table with no primary key and no index. `loadAllSagas` (`WHERE name = ?`) full-scans on
   every saga-actor `preStart`; `updateSaga`/`deleteSaga` (`WHERE name=? AND saga_id=?`)
@@ -370,13 +368,11 @@ starting points, not vetted designs.
   `aggregates` (with `base_order = 1`) alone would suffice.
 
 ### E. PermanentDelete ordering (data leak)
-- 🟠 `PostgresEventStoreState.scala:244-250` — inside the `PermanentDeleteEvent` localTx,
-  `DELETE FROM events WHERE aggregate_id=?` (L247) runs **before**
-  `DELETE FROM noop_events WHERE id IN (SELECT id FROM events WHERE aggregate_id=?)` (L248).
-  By the time the subquery runs, the matching `events` rows are gone, so it deletes
-  nothing → **orphaned `noop_events` rows accumulate** (storage leak + LEFT-JOIN cost in
-  `readAndProcessEvents`). *Fix:* delete `noop_events` **before** `events` (or capture the
-  ids first).
+- ✅ **FIXED.** `PostgresEventStoreState.scala:319-322` — inside the `PermanentDeleteEvent`
+  localTx, `DELETE FROM noop_events WHERE id IN (SELECT id FROM events WHERE aggregate_id=?)`
+  (L321) now runs **before** `DELETE FROM events WHERE aggregate_id=?` (L322), and the code
+  carries a comment explaining the subquery dependency. Re-verified against the current tree;
+  earlier revisions of this register described the reversed order.
 
 ### F. Schema / migration
 - 🟢 `PostgresDocumentStore.scala:30-33` (`init`) — `createTableIfNotExists` /
