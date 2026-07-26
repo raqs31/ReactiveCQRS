@@ -33,6 +33,15 @@ def moneyWithdrawn(account: BankAccount, event: MoneyWithdrawn): BankAccount =
 - PostgreSQL — the event store, event bus, saga state and document stores are all Postgres-backed
 - sbt 1.x
 
+> **You can run without a database.** `core` ships `Memory*` implementations of every durable
+> state, so a whole system — commands, events, projections, sagas — can run entirely in memory for
+> exploration and tests. Try it with
+> `sbt "examples/runMain io.reactivecqrs.example.fulfilment.FulfilmentApp --in-memory"`, and see
+> [Running without a database](docs/getting-started.md#running-without-a-database) for the wiring
+> and for what that mode cannot tell you. PostgreSQL is still required for anything real —
+> the framework does not support other databases
+> ([why](docs/operations.md#can-i-use-another-database)).
+
 ## Installing
 
 Artifacts are published to a private Nexus, **not** to Maven Central:

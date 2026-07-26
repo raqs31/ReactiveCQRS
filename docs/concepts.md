@@ -155,3 +155,8 @@ get neither, by design — that is what sagas and compensation are for.
 | Id allocation | `aggregates_uids_seq`, `commands_uids_seq`, `sagas_uids_seq` |
 
 All of it is created automatically. Details in [operations.md](operations.md).
+
+Every one of these has a memory-backed counterpart (`MemoryEventStoreState`, `MemoryEventBusState`,
+`MemorySubscriptionsState`, `MemoryDocumentStore`, …) except saga state, so a complete system can
+run with no database for exploration and tests — see
+[Running without a database](getting-started.md#running-without-a-database).

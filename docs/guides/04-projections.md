@@ -117,7 +117,12 @@ store.findDocumentByPaths(ExpectedSingleTextValue(Seq("owner"), "Alice"),
 The key is a `Long` — usually `aggregateId.asLong`. `PostgresDocumentStoreAutoId` generates keys
 from a sequence instead, for read models that are not one-per-aggregate.
 
-`MemoryDocumentStore` exists for tests. Some of its batch insert overloads are unimplemented.
+`MemoryDocumentStore` exists for tests and for running with no database at all — it implements
+`insertDocument`, `overwriteDocument`, `updateDocument`, `removeDocument`, `getDocument` and
+`findAll`, which is everything an ordinary projection needs. Its batch `insertDocuments` overloads
+and several `findDocumentByPath` predicates are unimplemented (`???`). Because projections are
+written against `DocumentStore[T]`, swapping the store needs no change to the projection itself —
+see [Running without a database](../getting-started.md#running-without-a-database).
 
 ### Indices
 

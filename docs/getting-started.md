@@ -10,6 +10,17 @@ rather read the finished thing first, start at
 
 ## 1. A database
 
+> **In a hurry, or just exploring?** You can skip this section entirely. The framework has
+> memory-backed implementations of every durable state, so a complete system runs with no database:
+>
+> ```bash
+> sbt "examples/runMain io.reactivecqrs.example.fulfilment.FulfilmentApp --in-memory"
+> ```
+>
+> See [Running without a database](#running-without-a-database) below. Come back here before you
+> build anything real — in-memory mode skips serialization entirely, so it will not catch an event
+> shape that cannot be stored.
+
 ReactiveCQRS needs PostgreSQL. It creates its own tables, sequences and stored procedures, so an
 empty database and a user who owns it is all you have to provide.
 
@@ -264,6 +275,73 @@ sbt -Dbank.jdbcUrl=jdbc:postgresql://localhost:5433/mydb -Dbank.dbUser=me -Dbank
 
 It opens two accounts, deposits, renames, demonstrates a rejected withdrawal, runs a money
 transfer saga across both accounts, reads an old version, and prints both projections.
+
+## Running without a database
+
+`core` ships a memory-backed implementation of every durable state, so the whole pipeline —
+commands, events, the event bus, projections, sagas — runs with no PostgreSQL at all. This is
+useful for exploring the programming model and for unit tests that would otherwise need a database.
+
+The wiring is identical except for the constructor calls, because every actor depends on the
+`*State` abstraction rather than on its implementation:
+
+| Component | Memory | PostgreSQL |
+|---|---|---|
+| Event store | `MemoryEventStoreState` | `PostgresEventStoreState` |
+| Event bus cursor | `MemoryEventBusState` | `PostgresEventBusState` |
+| Subscriptions | `MemorySubscriptionsState` | `PostgresSubscriptionsState` |
+| Command responses | `MemoryCommandResponseState` | `PostgresCommandResponseState` |
+| Type names | `MemoryTypesNamesState` *(exists, but nothing in the memory path needs it — the memory states do not map class names to ids)* | `PostgresTypesNamesState` |
+| Id generation | `MemoryUidGenerator` | `PostgresUidGenerator` |
+| Document stores | `MemoryDocumentStore` | `PostgresDocumentStore` |
+| Saga state | — **not shipped** | `PostgresSagaState` |
+
+```scala
+val system = ActorSystem("in-memory-example")
+
+val eventStoreState      = new MemoryEventStoreState
+val commandResponseState = new MemoryCommandResponseState
+val eventBusState        = new MemoryEventBusState
+val subscriptionsState   = new MemorySubscriptionsState
+
+val uidGenerator = system.actorOf(Props(new UidGeneratorActor(
+  new MemoryUidGenerator, new MemoryUidGenerator, new MemoryUidGenerator)), "uidGenerator")
+
+// ...and from here the wiring is exactly as in section 5 — no initSchema() calls, no pool.
+val store: DocumentStore[AccountSummary] = new MemoryDocumentStore[AccountSummary]
+```
+
+No `ConnectionPool.singleton(...)` and no `initSchema()` calls: there is no schema.
+
+**The one gap is `SagaState`.** Every other state has a `Memory*` variant, but sagas do not, so a
+system using them still needs PostgreSQL unless you supply your own. The fulfilment sample does
+exactly that — see
+[`InMemorySagaState`](../examples/src/main/scala/io/reactivecqrs/example/fulfilment/InMemorySagaState.scala),
+which is about forty lines and mirrors the Postgres semantics. Promoting an equivalent into `core`
+is on the [roadmap](roadmap.md).
+
+### What in-memory mode will not tell you
+
+Use it to learn the API and to test domain logic — not to validate that a design will work in
+production:
+
+- **Nothing is serialized.** PostgreSQL mode round-trips every event, saga order and read-model
+  document through mpjsons. In memory these are plain object references, so an event shape mpjsons
+  cannot handle passes in memory and fails against a database. This is the difference most likely
+  to bite you.
+- **Nothing survives a restart**, so saga crash-resumption — the entire reason saga progress is
+  persisted — cannot be exercised.
+- **The real optimistic lock is not involved.** The PostgreSQL write path takes a row lock inside
+  the `add_event` stored procedure; the memory store does not reproduce it, so contention behaves
+  differently.
+- **`UndoEvent`, `DuplicationEvent` and permanent delete** rely on `noop_events` and duplication
+  chains in the schema. `MemoryEventStoreState` also leaves `overwriteEvents` (history rewrite) and
+  `countEventsForAggregateTypes` unimplemented.
+
+Run against PostgreSQL at least once before trusting your event schema.
+
+For why H2 or another database is not an option, see
+[operations.md](operations.md#can-i-use-another-database).
 
 ## Troubleshooting
 
