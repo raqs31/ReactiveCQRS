@@ -27,6 +27,48 @@ Size the pool for the actors that hold a connection while working: every active
 `AggregateRepositoryActor` during a write, plus every projection during an update. A pool that is
 too small shows up as `connectionTimeoutMillis` errors under load, not as deadlock.
 
+## Can I use another database?
+
+Not today, and not by configuration. PostgreSQL is not merely where the data lands — it is where
+the concurrency control lives. Concretely, these are what a different database would have to
+provide:
+
+| Blocker | Where | Why it is hard |
+|---|---|---|
+| **Four PL/pgSQL stored functions** — `add_event`, `add_events`, `add_undo_event`, `add_duplication_event` | `PostgresEventStoreSchemaInitializer.scala` | The entire write path and the optimistic lock live here. H2 has no PL/pgSQL; its `MODE=PostgreSQL` is dialect and type-name compatibility, not a procedural language. |
+| **`UPDATE ... RETURNING`** | inside those functions | The atomic version-bump-and-read that makes the lock work. H2 does not support `RETURNING`. |
+| **`jsonb`, `::jsonb` casts, GIN and expression indices** | `PostgresDocumentStore.scala` | All read models are JSONB documents with indices built over JSON paths. H2's `JSON` type has different semantics and no GIN. |
+| **`pg_sequences.increment_by`, `NEXTVAL`, `PSQLException`** | `PostgresUidGenerator.scala` | Id pool sizing reads Postgres catalog tables directly. |
+| **`pg_class.reltuples`** | `PostgresEventStoreState.countAllEvents` | Fast row-count estimate. |
+
+So supporting H2, MySQL or anything else means implementing a new `EventStoreState`,
+`DocumentStore`, `UidGenerator` and schema initializer — reimplementing the optimistic lock with
+whatever primitives that engine offers. That is the "Externalize datastore" item on the
+[roadmap](roadmap.md), not a switch.
+
+**If what you actually want is to run something without installing PostgreSQL**, there are two
+working options:
+
+```bash
+# 1. No database at all - the sample app's in-memory mode
+sbt "examples/runMain io.reactivecqrs.example.fulfilment.FulfilmentApp --in-memory"
+
+# 2. A throwaway PostgreSQL, which takes about as long to start as H2 would
+docker run -d --rm --name rcqrs-pg -p 5432:5432 \
+  -e POSTGRES_USER=reactivecqrs -e POSTGRES_PASSWORD=reactivecqrs -e POSTGRES_DB=reactivecqrs \
+  postgres:16
+```
+
+`core` ships `Memory*` implementations of the event store, event bus, subscriptions, command
+responses, type names, uid generator and document store — enough to run a whole system with no
+database. The one gap is `SagaState`, for which the fulfilment sample supplies
+[`InMemorySagaState`](../examples/src/main/scala/io/reactivecqrs/example/fulfilment/InMemorySagaState.scala).
+
+In-memory mode is for exploring the programming model and for tests. It does not serialize
+anything, so it will not catch an event shape mpjsons cannot handle, and it does not reproduce the
+row-lock contention behaviour of the real write path. See
+[guides/07-sample-app.md](guides/07-sample-app.md#what-in-memory-mode-cannot-show-you).
+
 ## Schema reference
 
 Everything below is created automatically.

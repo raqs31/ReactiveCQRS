@@ -111,6 +111,9 @@ sbt "examples/runMain io.reactivecqrs.example.bank.BankExampleApp"
 
 # Ordering + shipping sample: two aggregates, a saga, three projections, random traffic
 sbt "examples/runMain io.reactivecqrs.example.fulfilment.FulfilmentApp --orders 30 --rate 5 --seed 42"
+
+# ...and the same sample with no database at all
+sbt "examples/runMain io.reactivecqrs.example.fulfilment.FulfilmentApp --in-memory"
 ```
 
 The library version lives in `project/Common.scala`, not in the per-module `build.sbt` files.

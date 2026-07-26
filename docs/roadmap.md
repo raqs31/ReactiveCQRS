@@ -10,6 +10,13 @@ Known gaps and planned work, carried over from the two `TODO` lists that used to
   context is not injected — handlers currently supply their own, as in
   `examples/.../CommandHandlers.scala`)*
 - Externalize the datastore — decouple the framework from the built-in PostgreSQL implementation
+  *(the concrete blockers, for anyone attempting this, are catalogued in
+  [operations.md](operations.md#can-i-use-another-database): four PL/pgSQL functions,
+  `UPDATE ... RETURNING`, JSONB/GIN document storage, and Postgres catalog reads)*
+- **`MemorySagaState` is missing from `core`.** Every other durable state has a `Memory*` variant,
+  which makes it possible to run a whole system with no database — except that a system using sagas
+  still needs PostgreSQL. The fulfilment example works around this with its own `InMemorySagaState`;
+  promoting an equivalent into `core` would close the gap.
 - Non-persistent projections
 - Query for events and aggregate state
 - Inject a clock into the framework, so time is controllable in tests and replays

@@ -12,7 +12,13 @@ Source: [`examples/.../fulfilment`](../../examples/src/main/scala/io/reactivecqr
 
 ## Running it
 
-You need a PostgreSQL database ([getting-started.md](../getting-started.md#1-a-database)).
+No database required — pass `--in-memory`:
+
+```bash
+sbt "examples/runMain io.reactivecqrs.example.fulfilment.FulfilmentApp --in-memory"
+```
+
+Or against a real PostgreSQL ([getting-started.md](../getting-started.md#1-a-database)):
 
 ```bash
 sbt "examples/runMain io.reactivecqrs.example.fulfilment.FulfilmentApp"
@@ -36,8 +42,51 @@ sbt "examples/runMain io.reactivecqrs.example.fulfilment.FulfilmentApp --jdbc-ur
 | `--seed N` | 1 | RNG seed — the same seed produces the same run |
 | `--concurrency N` | 8 | Threads generating traffic |
 | `--report-every N` | 5 | Seconds between dashboard reports (0 disables) |
+| `--in-memory` | off | Run with no database at all |
 | `--jdbc-url`, `--db-user`, `--db-password` | local defaults | Database connection |
 | `--help` | | Usage |
+
+## Storage modes
+
+The same wiring supports both backends, because the actors depend on the `*State` abstractions
+rather than on their implementations. Only the constructor calls differ — the aggregates,
+projections and saga are byte-for-byte identical in both modes.
+
+| Component | `--in-memory` | Default |
+|---|---|---|
+| Event store | `MemoryEventStoreState` | `PostgresEventStoreState` |
+| Event bus cursor | `MemoryEventBusState` | `PostgresEventBusState` |
+| Subscriptions | `MemorySubscriptionsState` | `PostgresSubscriptionsState` |
+| Command responses | `MemoryCommandResponseState` | `PostgresCommandResponseState` |
+| Saga state | `InMemorySagaState` *(supplied by this example)* | `PostgresSagaState` |
+| Id generation | `MemoryUidGenerator` | `PostgresUidGenerator` |
+| Document stores | `MemoryDocumentStore` | `PostgresDocumentStore` |
+
+`core` ships a `Memory*` variant of every durable state **except** `SagaState`, so this example
+provides [`InMemorySagaState`](../../examples/src/main/scala/io/reactivecqrs/example/fulfilment/InMemorySagaState.scala).
+It mirrors the Postgres semantics — `updateSaga` preserves `respondTo`, a missing row on update is
+ignored — so behaviour matches.
+
+### What in-memory mode cannot show you
+
+Use it to explore the programming model, not to validate a design:
+
+- **Nothing survives a restart**, so saga crash-resumption — the main reason saga progress is
+  persisted at all — cannot be demonstrated.
+- **Nothing is serialized.** Postgres mode round-trips every event and every saga order through
+  mpjsons; in-memory mode holds object references. An event or internal-order shape that mpjsons
+  cannot handle will pass in memory and fail against Postgres. Run against Postgres at least once
+  before trusting your event schema.
+- **The real optimistic lock is not exercised.** The Postgres write path takes a row lock inside
+  `add_event`; the memory store does not reproduce that, so contention behaviour differs.
+- **No `noop_events`, no duplication chains, no `pg_class` statistics** — the mechanisms described
+  in [design-rationale.md](../design-rationale.md) are Postgres-side.
+
+### Why not H2?
+
+Short answer: it will not work without writing a new storage backend, and that is a framework-level
+project rather than a configuration change. See
+[operations.md](../operations.md#can-i-use-another-database) for what specifically blocks it.
 
 ## The domain
 

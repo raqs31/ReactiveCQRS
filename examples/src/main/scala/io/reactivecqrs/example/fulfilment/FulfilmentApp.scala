@@ -6,14 +6,14 @@ import org.apache.pekko.pattern.ask
 import org.apache.pekko.util.Timeout
 import io.mpjsons.MPJsons
 import io.reactivecqrs.api.id.UserId
-import io.reactivecqrs.core.commandhandler.{AggregateCommandBusActor, PostgresCommandResponseState}
-import io.reactivecqrs.core.documentstore.{NoopDocumentStoreCache, PostgresDocumentStore}
-import io.reactivecqrs.core.eventbus.{EventBusSubscriptionsManager, EventBusSubscriptionsManagerApi, EventsBusActor, PostgresEventBusState}
-import io.reactivecqrs.core.eventstore.PostgresEventStoreState
-import io.reactivecqrs.core.projection.PostgresSubscriptionsState
-import io.reactivecqrs.core.saga.PostgresSagaState
+import io.reactivecqrs.core.commandhandler.{AggregateCommandBusActor, CommandResponseState, MemoryCommandResponseState, PostgresCommandResponseState}
+import io.reactivecqrs.core.documentstore.{DocumentStore, MemoryDocumentStore, NoopDocumentStoreCache, PostgresDocumentStore}
+import io.reactivecqrs.core.eventbus.{EventBusState, EventBusSubscriptionsManager, EventBusSubscriptionsManagerApi, EventsBusActor, MemoryEventBusState, PostgresEventBusState}
+import io.reactivecqrs.core.eventstore.{EventStoreState, MemoryEventStoreState, PostgresEventStoreState}
+import io.reactivecqrs.core.projection.{MemorySubscriptionsState, PostgresSubscriptionsState, SubscriptionsState}
+import io.reactivecqrs.core.saga.{PostgresSagaState, SagaState}
 import io.reactivecqrs.core.types.PostgresTypesNamesState
-import io.reactivecqrs.core.uid.{PostgresUidGenerator, UidGeneratorActor}
+import io.reactivecqrs.core.uid.{MemoryUidGenerator, PostgresUidGenerator, UidGeneratorActor}
 import io.reactivecqrs.example.fulfilment.FulfilmentProjections.{GetOrders, GetShipments, GetStats}
 import org.slf4j.LoggerFactory
 import scalikejdbc.{ConnectionPool, ConnectionPoolSettings}
@@ -27,6 +27,7 @@ case class FulfilmentConfig(orders: Int = 20,
                             seed: Long = 1L,
                             concurrency: Int = 8,
                             reportEvery: Int = 5,
+                            inMemory: Boolean = false,
                             jdbcUrl: String = "jdbc:postgresql://localhost:5432/reactivecqrs",
                             dbUser: String = "reactivecqrs",
                             dbPassword: String = "reactivecqrs")
@@ -58,6 +59,7 @@ object FulfilmentApp {
       |  --seed N          RNG seed; same seed = same run      (default 1)
       |  --concurrency N   threads generating traffic          (default 8)
       |  --report-every N  seconds between dashboard reports   (default 5, 0 disables)
+      |  --in-memory       run with no database at all         (default off)
       |  --jdbc-url URL    JDBC url    (default jdbc:postgresql://localhost:5432/reactivecqrs)
       |  --db-user U       database user     (default reactivecqrs)
       |  --db-password P   database password (default reactivecqrs)
@@ -89,6 +91,7 @@ object FulfilmentApp {
     case "--seed" :: v :: rest            => parse(rest, config.copy(seed = v.toLong))
     case "--concurrency" :: v :: rest     => parse(rest, config.copy(concurrency = v.toInt))
     case "--report-every" :: v :: rest    => parse(rest, config.copy(reportEvery = v.toInt))
+    case "--in-memory" :: rest            => parse(rest, config.copy(inMemory = true))
     case "--jdbc-url" :: v :: rest        => parse(rest, config.copy(jdbcUrl = v))
     case "--db-user" :: v :: rest         => parse(rest, config.copy(dbUser = v))
     case "--db-password" :: v :: rest     => parse(rest, config.copy(dbPassword = v))
@@ -178,27 +181,40 @@ object FulfilmentSystem {
 
   def start(config: FulfilmentConfig): FulfilmentSystem = {
 
-    log.info(s"connecting to ${config.jdbcUrl} as ${config.dbUser}")
-    Class.forName("org.postgresql.Driver")
-    ConnectionPool.singleton(config.jdbcUrl, config.dbUser, config.dbPassword,
-      ConnectionPoolSettings(initialSize = 5, maxSize = 30, connectionTimeoutMillis = 5000L))
-
     val system = ActorSystem("fulfilment-example")
-
     val mpjsons = new MPJsons
-    val typesNamesState = new PostgresTypesNamesState().initSchema()
 
-    val eventStoreState = new PostgresEventStoreState(mpjsons, typesNamesState).initSchema()
-    val commandResponseState = new PostgresCommandResponseState(mpjsons, typesNamesState).initSchema()
-    val eventBusState = new PostgresEventBusState().initSchema()
-    val subscriptionsState = new PostgresSubscriptionsState(typesNamesState, keepInMemory = true).initSchema()
-    val sagaState = new PostgresSagaState(mpjsons, typesNamesState)
-    sagaState.initSchema()
+    // Everything below is chosen once, here. The rest of the wiring is identical in both modes,
+    // because the actors depend on the `*State` abstractions rather than on their implementations.
+    val (eventStoreState, commandResponseState, eventBusState, subscriptionsState, sagaState, uidGenerator) =
+      if (config.inMemory) {
+        log.info("running fully in memory - no database, nothing survives this process")
+        (new MemoryEventStoreState: EventStoreState,
+          new MemoryCommandResponseState: CommandResponseState,
+          new MemoryEventBusState: EventBusState,
+          new MemorySubscriptionsState: SubscriptionsState,
+          new InMemorySagaState: SagaState,
+          system.actorOf(Props(new UidGeneratorActor(
+            new MemoryUidGenerator, new MemoryUidGenerator, new MemoryUidGenerator)), "uidGenerator"))
+      } else {
+        log.info(s"connecting to ${config.jdbcUrl} as ${config.dbUser}")
+        Class.forName("org.postgresql.Driver")
+        ConnectionPool.singleton(config.jdbcUrl, config.dbUser, config.dbPassword,
+          ConnectionPoolSettings(initialSize = 5, maxSize = 30, connectionTimeoutMillis = 5000L))
 
-    val uidGenerator = system.actorOf(Props(new UidGeneratorActor(
-      new PostgresUidGenerator("aggregates_uids_seq"),
-      new PostgresUidGenerator("commands_uids_seq"),
-      new PostgresUidGenerator("sagas_uids_seq"))), "uidGenerator")
+        val typesNamesState = new PostgresTypesNamesState().initSchema()
+        val sagas = new PostgresSagaState(mpjsons, typesNamesState)
+        sagas.initSchema()
+        (new PostgresEventStoreState(mpjsons, typesNamesState).initSchema(): EventStoreState,
+          new PostgresCommandResponseState(mpjsons, typesNamesState).initSchema(): CommandResponseState,
+          new PostgresEventBusState().initSchema(): EventBusState,
+          new PostgresSubscriptionsState(typesNamesState, keepInMemory = true).initSchema(): SubscriptionsState,
+          sagas: SagaState,
+          system.actorOf(Props(new UidGeneratorActor(
+            new PostgresUidGenerator("aggregates_uids_seq"),
+            new PostgresUidGenerator("commands_uids_seq"),
+            new PostgresUidGenerator("sagas_uids_seq"))), "uidGenerator"))
+      }
 
     // Three projection actors subscribe, so the bus waits for three before it starts publishing.
     val expectedSubscribers = 3
@@ -214,9 +230,17 @@ object FulfilmentSystem {
       AggregateCommandBusActor(new ShipmentAggregateContext, uidGenerator, eventStoreState,
         commandResponseState, eventBusActor, eventsReplayMode = false), "ShipmentCommandBus")
 
-    val ordersStore = new PostgresDocumentStore[OrderSummary]("fulfilment_orders", mpjsons, new NoopDocumentStoreCache)
-    val shipmentsStore = new PostgresDocumentStore[ShipmentSummary]("fulfilment_shipments", mpjsons, new NoopDocumentStoreCache)
-    val statsStore = new PostgresDocumentStore[FulfilmentStats]("fulfilment_stats", mpjsons, new NoopDocumentStoreCache)
+    // Projections are written against `DocumentStore[T]`, so the same projection classes work with
+    // either backing store — no conditional code inside the projections themselves.
+    val ordersStore: DocumentStore[OrderSummary] =
+      if (config.inMemory) new MemoryDocumentStore[OrderSummary]
+      else new PostgresDocumentStore[OrderSummary]("fulfilment_orders", mpjsons, new NoopDocumentStoreCache)
+    val shipmentsStore: DocumentStore[ShipmentSummary] =
+      if (config.inMemory) new MemoryDocumentStore[ShipmentSummary]
+      else new PostgresDocumentStore[ShipmentSummary]("fulfilment_shipments", mpjsons, new NoopDocumentStoreCache)
+    val statsStore: DocumentStore[FulfilmentStats] =
+      if (config.inMemory) new MemoryDocumentStore[FulfilmentStats]
+      else new PostgresDocumentStore[FulfilmentStats]("fulfilment_stats", mpjsons, new NoopDocumentStoreCache)
 
     val ordersProjection = system.actorOf(
       Props(new OrdersProjection(eventBusSubscriptionsManager, subscriptionsState, ordersStore)), "OrdersProjection")
