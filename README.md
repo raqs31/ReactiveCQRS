@@ -74,6 +74,7 @@ Schema creation is then automatic and idempotent — every `initSchema()` is `CR
 | [Guide: projections](docs/guides/04-projections.md) | Read models, listener types, document stores, ordering |
 | [Guide: sagas](docs/guides/05-sagas.md) | Multi-aggregate processes, compensation, resumption |
 | [Guide: replay](docs/guides/06-replay.md) | Rebuilding projections from history |
+| [Guide: sample app](docs/guides/07-sample-app.md) | The runnable ordering + shipping app — CLI, random traffic, reading the logs |
 | [Operations](docs/operations.md) | Schema reference, indices, tuning, deployment caveats |
 | [Roadmap](docs/roadmap.md) | Known gaps and planned work |
 
@@ -95,7 +96,7 @@ automated tooling; it also carries a register of known performance and integrity
 |---|---|
 | `api` | Public domain API — `Aggregate`, `Event`, `Command`, results, ids. Depends only on Pekko. |
 | `core` | The machinery — actors, event store, event bus, projections, sagas, document store, id generator. |
-| `examples` | A runnable bank-account example that the documentation is written against. Not published. |
+| `examples` | Two runnable examples the documentation is written against — a bank account (teaching) and an ordering/shipping app (realistic). Not published. |
 | `testdomain` | Shopping-cart domain used by the integration specs. |
 | `testutils` | `CommonSpec` and actor-ask helpers for tests. |
 
@@ -107,6 +108,9 @@ sbt test                                         # all tests (Postgres-backed on
 sbt core/test
 sbt "testdomain/testOnly *ReactiveTestDomainSpec"
 sbt "examples/runMain io.reactivecqrs.example.bank.BankExampleApp"
+
+# Ordering + shipping sample: two aggregates, a saga, three projections, random traffic
+sbt "examples/runMain io.reactivecqrs.example.fulfilment.FulfilmentApp --orders 30 --rate 5 --seed 42"
 ```
 
 The library version lives in `project/Common.scala`, not in the per-module `build.sbt` files.

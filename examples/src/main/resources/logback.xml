@@ -2,9 +2,21 @@
 
     <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
         <encoder>
-            <pattern>%d{HH:mm:ss.SSS} %-5level %logger{36} - %msg%n</pattern>
+            <!-- %logger{0} keeps the category short (app, command, flow, saga, projection.orders)
+                 so the pipeline is readable as a column. -->
+            <pattern>%d{HH:mm:ss.SSS} %-5level %-20logger{0} %msg%n</pattern>
         </encoder>
     </appender>
+
+    <!-- The fulfilment sample's own categories. Drop any of these to WARN to quieten that stage,
+         or raise projection.stats to DEBUG to see every individual event as it is processed. -->
+    <logger name="app" level="INFO"/>
+    <logger name="command" level="INFO"/>
+    <logger name="flow" level="INFO"/>
+    <logger name="saga" level="INFO"/>
+    <logger name="projection.orders" level="INFO"/>
+    <logger name="projection.shipments" level="INFO"/>
+    <logger name="projection.stats" level="INFO"/>
 
     <!-- The framework logs every actor message at DEBUG; useful when learning, far too loud
          for normal use. Raise io.reactivecqrs to DEBUG to watch the pipeline work. -->
