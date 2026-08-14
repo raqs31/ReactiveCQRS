@@ -25,7 +25,7 @@ class PostgresDocumentStoreSpec extends FeatureSpec with GivenWhenThen with Befo
         documentStore.insertDocument(0, 3, ComplexType(List(SimpleType(2), SimpleType(3))))
 
         When("document store is searched by array value")
-        val result = documentStore.findDocumentByObjectInArray(List("simpleArray"), Seq("field"), 2)
+        val result = documentStore.findDocumentByObjectInArray(List("simpleArray"), Seq("field"), 2, 10000)
 
         Then("correct documents are retrieved")
         result.keySet mustBe Set(1, 3)

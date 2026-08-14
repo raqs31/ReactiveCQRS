@@ -139,7 +139,7 @@ sealed abstract class AbstractDocumentStore[T <: AnyRef] {
     }
   }
 
-  def findDocumentByObjectInArray[V](arrayPath: Seq[String], objectPath: Seq[String], value: V)(implicit session: DBSession = null): Map[Long, Document[T]]
+  def findDocumentByObjectInArray[V](arrayPath: Seq[String], objectPath: Seq[String], value: V, limit: Int)(implicit session: DBSession = null): Map[Long, Document[T]]
 
   def overwriteDocument(key: Long, document: T)(implicit session: DBSession): Unit
 
