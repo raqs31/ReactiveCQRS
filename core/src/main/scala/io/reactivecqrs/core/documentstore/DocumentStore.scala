@@ -64,7 +64,7 @@ case class ExpectedMultipleLongValues(path: Seq[String], values: Iterable[Long])
 import scala.reflect.runtime.universe._
 
 object DocumentStoreQuery {
-  def basic(where: Seq[ExpectedValue]) = DocumentStoreQuery(where, Seq.empty, 0, 10000)
+  def basic(where: Seq[ExpectedValue]) = DocumentStoreQuery(where, Seq.empty, 0, -1)
 }
 
 sealed trait Sort

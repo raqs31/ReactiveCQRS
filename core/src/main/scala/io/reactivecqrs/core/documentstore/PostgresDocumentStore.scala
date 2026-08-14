@@ -210,7 +210,9 @@ sealed trait PostgresDocumentStoreTrait[T <: AnyRef] {
     SQL("SELECT id, version, document FROM " + projectionTableName +
       " WHERE" + constructWhereClauseForExpectedValues(searchParams.where) +
       sortPart +
-      " LIMIT " + searchParams.limit + " OFFSET " + searchParams.offset)
+      (if(searchParams.limit >= 0) (" LIMIT " + searchParams.limit) else "") +
+      (if(searchParams.offset > 0) (" OFFSET " + searchParams.offset) else "")
+    )
   }
 
   private def createPartsQuery(parts: Seq[Seq[String]], searchParams: DocumentStoreQuery) = {
@@ -346,14 +348,14 @@ sealed trait PostgresDocumentStoreTrait[T <: AnyRef] {
     }
   }
 
-  def findDocumentByObjectInArray[V](arrayPath: Seq[String], objectPath: Seq[String], value: V)(implicit session: DBSession = null): Map[Long, Document[T]] = {
-    findDocumentByObjectInArray("document", arrayPath, objectPath, value)
+  def findDocumentByObjectInArray[V](arrayPath: Seq[String], objectPath: Seq[String], value: V, limit: Int)(implicit session: DBSession = null): Map[Long, Document[T]] = {
+    findDocumentByObjectInArray("document", arrayPath, objectPath, value, limit)
   }
 
-  protected def findDocumentByObjectInArray[V](columnName: String, array: Seq[String], objectPath: Seq[String], value: V)(implicit session: DBSession): Map[Long, Document[T]] = {
+  protected def findDocumentByObjectInArray[V](columnName: String, array: Seq[String], objectPath: Seq[String], value: V, limit: Int)(implicit session: DBSession): Map[Long, Document[T]] = {
 
     def QUERY(arrayPath: String, path: String) =
-      s"SELECT id, version, document FROM $projectionTableName WHERE $columnName #> '$arrayPath' @> '[$path]' LIMIT 10000"
+      s"SELECT id, version, document FROM $projectionTableName WHERE $columnName #> '$arrayPath' @> '[$path]' LIMIT " + limit
 
     def makeJson(path: Seq[String], value: V): String =
       path match {
