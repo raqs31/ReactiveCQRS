@@ -1,6 +1,7 @@
 ### ReactiveCQRS
-CQRS framework implementation leveraging Scala and Akka framework, for building reactive distributed applications.
+CQRS + Event Sourcing framework for Scala, built on Apache Pekko actors and PostgreSQL, for building reactive distributed applications.
 
+**Documentation:** [docs/](docs/README.md) — [getting started](docs/getting-started.md) · [API](docs/api.md) · [core architecture](docs/core.md) · [configuration](docs/configuration.md) · [examples](docs/examples.md)
 
 ##### it uses Default singleton ScalikeJDBC connection pool, so it has to be initialized first
 
