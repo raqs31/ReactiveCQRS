@@ -22,46 +22,55 @@ It is a *framework/library*, not a runnable application. The `testdomain` module
 (a shopping-cart domain) is the canonical worked example and the main integration
 test surface.
 
-- Scala **2.13.18**, compiled with `-target:jvm-1.8`.
-- Pekko **1.4.0**, ScalikeJDBC **3.5.0**, postgresql **42.7.10**, mpjsons **0.6.50**.
+- Scala **2.13.18**, compiled with `maven.compiler.release` 11.
+- Pekko **1.4.0**, ScalikeJDBC **3.5.0**, postgresql **42.7.10**, mpjsons **0.6.51**.
 - Uses the **default ScalikeJDBC connection pool** (`DB.autoCommit`, `DB.readOnly`,
   `DB.localTx`). The connection pool **must be initialized by the host application
   before** any framework code runs (see README).
 
-### Modules (`build.sbt`)
-| Module | Path | Purpose |
+### Modules (`pom.xml`)
+| Module | POM | Purpose |
 |--------|------|---------|
-| `api` | `api/` | Public domain API: `Aggregate`, `Event`, `Command`, results, ids. Depends only on Pekko. |
-| `core` | `core/` | All the machinery: actors, event store, event bus, projections, sagas, document store, uid generator. Depends on `api`. |
-| `testdomain` | `testdomain/` | Example shopping-cart domain + integration specs. Depends on `api`, `core`. |
-| `testutils` | `testutils/` | `CommonSpec`, actor-ask helpers for tests. |
-| `utils` | `utils/` | Present in tree; commented out / mostly unused in `build.sbt`. |
+| `api` | `api/pom.xml` | Public domain API: `Aggregate`, `Event`, `Command`, results, ids. Depends only on Pekko. |
+| `core` | `core/pom.xml` | All the machinery: actors, event store, event bus, projections, sagas, document store, uid generator. Depends on `api`. |
+| `testdomain` | `testdomain/pom.xml` | Example shopping-cart domain + integration specs. Depends on `api`, `core`. |
+| `testutils` | `testutils/pom.xml` | `CommonSpec`, actor-ask helpers for tests. |
 
-`memory`/`postgres` modules are referenced as commented-out lines in `build.sbt` —
-ignore them.
+Artifacts are `io.reactivecqrs:reactivecqrs-<module>_2.13`; the parent POM is
+`io.reactivecqrs:reactivecqrs-main`. Any `utils/`, `memory/` or `postgres/` directory is not a
+module of the reactor — ignore it.
 
 ---
 
 ## 2. Build & test
 
-SBT project. Common commands (run from repo root):
+Maven multi-module build (parent `pom.xml`, modules `api`, `testutils`, `core`, `testdomain`).
+Common commands (run from repo root):
+
+**Test sources currently do not compile against ScalaTest 3.2.20** (they use 3.0-style APIs such as
+`FeatureSpecLike`, `MustMatchers` and lowercase `feature(`), so build with tests skipped:
 
 ```bash
-sbt compile              # compile all modules
-sbt test                 # run all tests (ScalaTest)
-sbt core/test            # tests for one module
-sbt "testdomain/testOnly *ReactiveTestDomainSpec"
-sbt "project core" "~compile"   # incremental
+mvn install -Dmaven.test.skip=true           # compile and install all modules, no test compilation
 ```
 
-- Test framework: **ScalaTest 3.2.19**.
-- **Postgres-backed tests require a running PostgreSQL** and an initialized
-  ScalikeJDBC pool (see `testdomain/src/test/resources/application.conf` and
-  `testutils`). Memory-backed variants (`Memory*State`, `MemoryDocumentStore`)
-  exist for tests that don't need a DB.
-- Publishing: `publishMavenStyle`, target `https://nexus.neula.in/...`
-  (overridable via `-DsnapshotsRepo=`). Version lives in `project/Common.scala`
-  (`version := "0.12.44"`) — bump it there, not per-module.
+Usable once the specs are ported to ScalaTest 3.2:
+
+```bash
+mvn install                                  # compile, test and install all modules
+mvn -pl core test                            # tests for one module
+mvn -pl testdomain test -Dsuites=<fqcn>      # one ScalaTest suite, e.g. ...ReactiveTestDomainSpec
+```
+
+- Test framework: **ScalaTest 3.2.20** (via `scalatest-maven-plugin`; surefire is disabled).
+- **DB-dependent suites need PostgreSQL at `localhost:5432/reactivecqrs`** (user `reactivecqrs`)
+  and an initialized ScalikeJDBC pool (see `testdomain/src/test/resources/application.conf` and
+  `testutils`): `PostgresEventStoreStateSpec`, `PostgresDocumentStoreSpec`, `SubscribableSpec`,
+  `ReactiveTestDomainSpec`, `EventsReplaySpec`. Memory-backed variants (`Memory*State`,
+  `MemoryDocumentStore`) exist for tests that don't need a DB.
+- Publishing: `mvn deploy` uses the parent POM's `distributionManagement`
+  (`https://nexus.neula.in/...`). The version lives in the POMs — the parent `<version>` plus the
+  `<parent>` reference in each module POM; bump all of them, then `mvn deploy`.
 
 ---
 
